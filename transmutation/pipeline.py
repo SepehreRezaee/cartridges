@@ -6,8 +6,8 @@ from typing import Iterable, Optional, Protocol
 import torch
 
 from cartridges.datasets import TrainDataset, DatasetElement
-from cartridges.transmutation.extractor import TokenPatchExtractor, TokenPatch
-from cartridges.transmutation.solver import ThoughtPatch, ThoughtPatchSolver
+from transmutation.extractor import TokenPatchExtractor, TokenPatch
+from transmutation.solver import ThoughtPatch, ThoughtPatchSolver
 
 
 class PatchExtractor(Protocol):

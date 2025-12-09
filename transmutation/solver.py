@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 
 import torch
 
-from cartridges.transmutation.extractor import TokenPatch
+from transmutation.extractor import TokenPatch
 
 
 @dataclass
