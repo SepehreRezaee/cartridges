@@ -18,6 +18,7 @@ class PatchExtractor(Protocol):
         dataset: TrainDataset,
         context_strip_fn: Optional[callable] = None,
         max_batches: Optional[int] = None,
+        show_progress: bool = False,
     ) -> Iterable[TokenPatch]:
         ...
 
@@ -48,15 +49,17 @@ class Transmuter:
         context_strip_fn: Optional[callable] = None,
         max_batches: Optional[int] = None,
         extra_metadata: Optional[dict] = None,
+        show_progress: bool = False,
     ) -> TransmutationArtifacts:
         patches = list(
             self.extractor.extract(
                 dataset,
                 context_strip_fn=context_strip_fn,
                 max_batches=max_batches,
+                show_progress=show_progress,
             )
         )
-        thought: ThoughtPatch = self.solver.solve(patches)
+        thought: ThoughtPatch = self.solver.solve(patches, show_progress=show_progress)
         metadata = extra_metadata or {}
         metadata.update(
             {

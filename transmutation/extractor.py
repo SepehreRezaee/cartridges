@@ -6,6 +6,7 @@ from typing import Callable, Iterable, List, Optional
 import torch
 from torch import nn
 from transformers import PreTrainedTokenizerBase
+from tqdm.auto import tqdm
 
 from cartridges.datasets import TrainDataset, DatasetElement
 
@@ -64,6 +65,7 @@ class TokenPatchExtractor:
         dataset: TrainDataset,
         context_strip_fn: Optional[Callable[[DatasetElement], torch.Tensor]] = None,
         max_batches: Optional[int] = None,
+        show_progress: bool = False,
     ) -> List[TokenPatch]:
         """Compute TokenPatch objects over the dataset.
 
@@ -72,20 +74,32 @@ class TokenPatchExtractor:
             context_strip_fn: Callable that returns a "no-context" input tensor.
                 Defaults to reusing the trailing tokens of the element.
             max_batches: optional limit for quick debugging.
+            show_progress: whether to display a progress bar over dataset elements.
         """
         patches: List[TokenPatch] = []
         batches = dataset.batches[:max_batches] if max_batches else dataset.batches
 
-        for batch in batches:
-            for elem_idx in batch:
-                element = dataset._get_element(elem_idx)
-                patches.extend(
-                    self._extract_from_element(
-                        element,
-                        element_idx=elem_idx,
-                        context_strip_fn=context_strip_fn,
+        progress = None
+        if show_progress:
+            total_elems = sum(len(batch) for batch in batches)
+            progress = tqdm(total=total_elems, desc="Extracting token patches", unit="element")
+
+        try:
+            for batch in batches:
+                for elem_idx in batch:
+                    element = dataset._get_element(elem_idx)
+                    patches.extend(
+                        self._extract_from_element(
+                            element,
+                            element_idx=elem_idx,
+                            context_strip_fn=context_strip_fn,
+                        )
                     )
-                )
+                    if progress:
+                        progress.update(1)
+        finally:
+            if progress:
+                progress.close()
         return patches
 
     def _default_strip(self, element: DatasetElement) -> torch.Tensor:

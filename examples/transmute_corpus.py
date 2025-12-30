@@ -29,6 +29,7 @@ class TransmutationConfig(ObjectConfig):
     lambda_scale: Optional[float] = None
     output_path: str = "transmuted_adapter.pt"
     data_limit: Optional[int] = None
+    progress: bool = True
 
 
 def parse_args() -> TransmutationConfig:
@@ -42,6 +43,8 @@ def parse_args() -> TransmutationConfig:
     parser.add_argument("--output-path", default="transmuted_adapter.pt", help="Where to write the adapter weights.")
     parser.add_argument("--data-limit", type=int, default=None, help="Optional cap on number of conversations.")
     parser.add_argument("--seed", type=int, default=0, help="Seed used by TrainDataset.")
+    parser.add_argument("--no-progress", dest="progress", action="store_false", help="Disable progress bars.")
+    parser.set_defaults(progress=True)
     args = parser.parse_args()
     return TransmutationConfig(
         data_path=args.data_path,
@@ -53,6 +56,7 @@ def parse_args() -> TransmutationConfig:
         output_path=args.output_path,
         data_limit=args.data_limit,
         seed=args.seed,
+        progress=args.progress,
     )
 
 
@@ -77,12 +81,12 @@ def main(cfg: TransmutationConfig) -> None:
 
     logger.info("Starting token patch extraction")
     extractor = TokenPatchExtractor(model=model, tokenizer=tokenizer, device=cfg.device)
-    patches = extractor.extract(ds)
+    patches = extractor.extract(ds, show_progress=cfg.progress)
     logger.info(f"Extracted {len(patches)} token patches")
 
     logger.info("Solving for thought patch (weight/bias deltas)")
     solver = ThoughtPatchSolver(lambda_scale=cfg.lambda_scale)
-    thought = solver.solve(patches)
+    thought = solver.solve(patches, show_progress=cfg.progress)
     logger.info(
         f"Solved deltas: bias_dim={thought.bias_delta.shape}, "
         f"weight_shape={thought.weight_delta.shape}, lambda={cfg.lambda_scale}"

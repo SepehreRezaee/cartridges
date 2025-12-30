@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 import torch
+from tqdm.auto import tqdm
 
 from transmutation.extractor import TokenPatch
 
@@ -26,10 +27,18 @@ class ThoughtPatchSolver:
     def __init__(self, lambda_scale: Optional[float] = None) -> None:
         self.lambda_scale = lambda_scale
 
-    def solve(self, patches: Iterable[TokenPatch]) -> ThoughtPatch:
+    def solve(self, patches: Iterable[TokenPatch], show_progress: bool = False) -> ThoughtPatch:
         deltas = []
         outer_sums = None
         count = 0
+        progress = None
+
+        if show_progress:
+            try:
+                total = len(patches)  # type: ignore[arg-type]
+            except TypeError:
+                total = None
+            progress = tqdm(total=total, desc="Aggregating thought patch", unit="patch")
 
         for patch in patches:
             delta = patch.delta
@@ -40,6 +49,11 @@ class ThoughtPatchSolver:
             rank_one = torch.outer(delta, a_t) / denom
             outer_sums = rank_one if outer_sums is None else outer_sums + rank_one
             count += 1
+            if progress:
+                progress.update(1)
+
+        if progress:
+            progress.close()
 
         if count == 0:
             raise ValueError("No patches provided to solver.")

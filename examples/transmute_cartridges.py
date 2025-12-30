@@ -32,6 +32,7 @@ class CartridgeTransmutationConfig(ObjectConfig):
     output_path: str = "transmuted_adapter.pt"
     data_limit: Optional[int] = None
     max_batches: Optional[int] = None
+    progress: bool = True
 
 
 def parse_args() -> CartridgeTransmutationConfig:
@@ -51,6 +52,8 @@ def parse_args() -> CartridgeTransmutationConfig:
     parser.add_argument("--data-limit", type=int, default=None, help="Optional cap on number of conversations per file.")
     parser.add_argument("--max-batches", type=int, default=None, help="Optional cap on batches for quick debug.")
     parser.add_argument("--seed", type=int, default=0, help="Seed used by TrainDataset.")
+    parser.add_argument("--no-progress", dest="progress", action="store_false", help="Disable progress bars.")
+    parser.set_defaults(progress=True)
     args = parser.parse_args()
     return CartridgeTransmutationConfig(
         data_paths=args.data_paths,
@@ -63,6 +66,7 @@ def parse_args() -> CartridgeTransmutationConfig:
         data_limit=args.data_limit,
         max_batches=args.max_batches,
         seed=args.seed,
+        progress=args.progress,
     )
 
 
@@ -115,6 +119,7 @@ def main(cfg: CartridgeTransmutationConfig) -> None:
         dataset=dataset,
         max_batches=cfg.max_batches,
         extra_metadata={"data_paths": cfg.data_paths},
+        show_progress=cfg.progress,
     )
     logger.info(
         f"Extracted adapter: bias_dim={artifacts.bias_delta.shape}, "

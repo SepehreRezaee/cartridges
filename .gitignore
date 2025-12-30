@@ -9,6 +9,7 @@ output/
 wandb/
 artifacts/
 outputs/
+data/
 _data/
 
 # C extensions
