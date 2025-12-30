@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from pydrantic import ObjectConfig
+from dataclasses import dataclass
 
 from cartridges.datasets import DataSource, TrainDataset
 from cartridges.transmutation.adapter import ThoughtAdapter
@@ -19,9 +19,8 @@ from cartridges.transmutation.solver import ThoughtPatchSolver
 from cartridges.utils import get_logger
 
 
-class CartridgeTransmutationConfig(ObjectConfig):
-    _pass_as_config = True
-
+@dataclass
+class CartridgeTransmutationConfig:
     data_paths: List[str]
     model_name: str
     tokenizer_name: Optional[str] = None
