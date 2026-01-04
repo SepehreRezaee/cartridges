@@ -70,7 +70,13 @@ def parse_args() -> CartridgeTransmutationConfig:
 
 
 def build_dataset(cfg: CartridgeTransmutationConfig, tokenizer) -> TrainDataset:
-    sources = [DataSource(path=p, type="local", limit=cfg.data_limit) for p in cfg.data_paths]
+    sources = []
+    for p in cfg.data_paths:
+        # Auto-detect: if path contains "/" but no "." extension, assume HuggingFace
+        if "/" in p and not any(p.endswith(ext) for ext in [".parquet", ".pkl", ".json", ".jsonl"]):
+            sources.append(DataSource(path=p, type="hf", limit=cfg.data_limit))
+        else:
+            sources.append(DataSource(path=p, type="local", limit=cfg.data_limit))
     return TrainDataset(
         TrainDataset.Config(
             data_sources=sources,
