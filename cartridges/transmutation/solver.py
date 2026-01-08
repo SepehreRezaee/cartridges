@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 import torch
 from tqdm.auto import tqdm
 
-from transmutation.extractor import TokenPatch
+from .extractor import TokenPatch
 
 
 @dataclass

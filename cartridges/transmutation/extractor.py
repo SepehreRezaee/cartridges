@@ -44,7 +44,8 @@ class TokenPatchExtractor:
         self.model = model.to(device)
         self.tokenizer = tokenizer
         self.device = device
-        self.layers = layers or [-1]
+        # If layers is None, we will determine it dynamically or default to "all" behavior in _forward_hidden
+        self.layers = layers
         # ensure we expose hidden states for activations
         self.model.eval()
 
@@ -69,8 +70,13 @@ class TokenPatchExtractor:
         
         # Normalize layer indices to positive integers
         num_layers = len(outputs.hidden_states)
+        
+        # If self.layers is None, extracting ALL layers (0 to num_layers - 1)
+        target_layers = self.layers if self.layers is not None else list(range(num_layers))
+
         results = {}
-        for l_idx in self.layers:
+        for l_idx in target_layers:
+            # Handle negative indices if provided in explicit list
             abs_idx = l_idx if l_idx >= 0 else num_layers + l_idx
             # hidden_states[i] is [batch_size, seq_len, hidden_dim]
             # we only care about the last token's hidden state for our "next token" prediction context
@@ -212,8 +218,11 @@ class TokenPatchExtractor:
         # 2. Forward pass on 'base' context
         base_hidden_dict = self._forward_sequence_hidden(base_ids)
         
+        
         # 3. Vectorized delta computation
-        first_layer = self.layers[0]
+        # Determine layers available in the hidden dict
+        available_layers = sorted(with_hidden_dict.keys())
+        first_layer = available_layers[0]
         # completion_len is the number of tokens we are aligning from the end
         completion_len = min(with_hidden_dict[first_layer].size(0), base_hidden_dict[first_layer].size(0))
         
@@ -222,7 +231,7 @@ class TokenPatchExtractor:
         # slice_with = slice(-completion_len, None) # this fails if completion_len is 0? no.
         # if completion_len == full len, slice(-len, None) works.
         
-        for layer_idx in self.layers:
+        for layer_idx in available_layers:
             # Get full sequence tensors
             H_with = with_hidden_dict[layer_idx] # [L_with, D]
             H_base = base_hidden_dict[layer_idx] # [L_base, D]
@@ -278,8 +287,11 @@ class TokenPatchExtractor:
             )
             
         num_layers = len(outputs.hidden_states)
+        
+        target_layers = self.layers if self.layers is not None else list(range(num_layers))
+        
         results = {}
-        for l_idx in self.layers:
+        for l_idx in target_layers:
             abs_idx = l_idx if l_idx >= 0 else num_layers + l_idx
             # squeeze batch dim 0 -> [seq_len, D]
             results[l_idx] = outputs.hidden_states[abs_idx].squeeze(0)

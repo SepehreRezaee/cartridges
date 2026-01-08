@@ -33,9 +33,8 @@ from cartridges.clients.base import CartridgeConfig
 from cartridges.data.longhealth.evals import LongHealthMultipleChoiceGenerateDataset
 from cartridges.data.mtob.evals import MTOBKalamangToEnglishGenerateDataset
 from cartridges.evaluate import GenerationEvalConfig, GenerationEvalRunConfig, ICLBaseline
-from cartridges.transmutation.adapter import ThoughtAdapter, register_thought_hook
+from cartridges.transmutation.adapter import MultiLayerThoughtAdapter, ThoughtAdapter
 from cartridges.utils.wandb import WandBConfig
-
 
 # ------------------------- Local Adapter Generator --------------------------- #
 
@@ -50,12 +49,23 @@ class AdapterGenerator:
     """Generator that applies a transmuted adapter on a local HF model."""
 
     def __init__(self, model_name: str, adapter_path: str, device: str = "cuda"):
-        ckpt = torch.load(adapter_path, map_location="cpu")
-        self.adapter = ThoughtAdapter(ckpt["bias_delta"], ckpt["weight_delta"])
+        # Load multi-layer adapter
+        self.adapter = MultiLayerThoughtAdapter.from_pretrained(adapter_path, map_location="cpu")
         self.model = AutoModelForCausalLM.from_pretrained(model_name).to(device).eval()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.device = device
-        self.hook = register_thought_hook(self.model, self.adapter, lambda m: m.lm_head)
+        
+        # Apply hooks. We need a selector that maps layer indices to modules.
+        # Assuming standard HF models where layers are in model.model.layers or model.layers
+        def layer_selector(m, i):
+            if hasattr(m, "model") and hasattr(m.model, "layers"):
+                return m.model.layers[i]
+            elif hasattr(m, "layers"):
+                return m.layers[i]
+            # Fallback for some architectures or if i is special (like -1 for lm_head? usually we target hidden layers)
+            raise ValueError(f"Could not locate layer {i} in model {type(m)}")
+
+        self.handles = self.adapter.apply(self.model, layer_selector)
 
     def generate(self, prompts: List[str], max_new_tokens: int = 128, temperature: float = 0.0) -> List[AdapterResult]:
         results = []
@@ -83,7 +93,8 @@ class AdapterGenerator:
         return results
 
     def close(self):
-        self.hook.remove()
+        for h in self.handles:
+            h.remove()
 
 
 # ----------------------------- Benchmark Runner ----------------------------- #

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from cartridges.datasets import DataSource, TrainDataset
 from cartridges.transmutation.extractor import TokenPatchExtractor
+from cartridges.transmutation.pipeline import Transmuter
 from cartridges.transmutation.solver import ThoughtPatchSolver
 from cartridges.utils import get_logger
 
@@ -29,6 +30,7 @@ class TransmutationConfig:
     output_path: str = "transmuted_adapter.pt"
     data_limit: Optional[int] = None
     progress: bool = True
+    layers: Optional[List[int]] = None
 
 
 def parse_args() -> TransmutationConfig:
@@ -43,8 +45,19 @@ def parse_args() -> TransmutationConfig:
     parser.add_argument("--data-limit", type=int, default=None, help="Optional cap on number of conversations.")
     parser.add_argument("--seed", type=int, default=0, help="Seed used by TrainDataset.")
     parser.add_argument("--no-progress", dest="progress", action="store_false", help="Disable progress bars.")
+    parser.add_argument("--layers", nargs="+", default=["-1"], help="Layers to extract from. Use 'all' or list indices.")
     parser.set_defaults(progress=True)
     args = parser.parse_args()
+    
+    # Parse layers
+    if "all" in args.layers:
+        layers = None
+    else:
+        try:
+            layers = [int(l) for l in args.layers]
+        except ValueError:
+            raise ValueError(f"Invalid layers argument: {args.layers}")
+    
     return TransmutationConfig(
         data_path=args.data_path,
         model_name=args.model_name,
@@ -56,6 +69,7 @@ def parse_args() -> TransmutationConfig:
         data_limit=args.data_limit,
         seed=args.seed,
         progress=args.progress,
+        layers=layers,
     )
 
 
@@ -79,27 +93,28 @@ def main(cfg: TransmutationConfig) -> None:
     logger.info(f"Dataset prepared with {len(ds.elements)} elements and {len(ds)} batches")
 
     logger.info("Starting token patch extraction")
-    extractor = TokenPatchExtractor(model=model, tokenizer=tokenizer, device=cfg.device)
-    patches = extractor.extract(ds, show_progress=cfg.progress)
-    logger.info(f"Extracted {len(patches)} token patches")
-
-    logger.info("Solving for thought patch (weight/bias deltas)")
+    extractor = TokenPatchExtractor(model=model, tokenizer=tokenizer, layers=cfg.layers, device=cfg.device)
     solver = ThoughtPatchSolver(lambda_scale=cfg.lambda_scale)
-    thought = solver.solve(patches, show_progress=cfg.progress)
-    logger.info(
-        f"Solved deltas: bias_dim={thought.bias_delta.shape}, "
-        f"weight_shape={thought.weight_delta.shape}, lambda={cfg.lambda_scale}"
+    transmuter = Transmuter(extractor=extractor, solver=solver)
+    
+    artifacts = transmuter.run(
+        dataset=ds, 
+        max_batches=None,
+        show_progress=cfg.progress
     )
+
+    # artifacts has bias_deltas, weight_deltas (dicts)
+    logger.info(f"Extracted adapter for {len(artifacts.bias_deltas)} layers.")
 
     out_path = Path(cfg.output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "bias_delta": thought.bias_delta,
-            "weight_delta": thought.weight_delta,
+            "bias_deltas": artifacts.bias_deltas,
+            "weight_deltas": artifacts.weight_deltas,
+            "metadata": artifacts.metadata,
             "model_name": cfg.model_name,
             "tokenizer_name": cfg.tokenizer_name or cfg.model_name,
-            "lambda_scale": cfg.lambda_scale,
         },
         out_path,
     )

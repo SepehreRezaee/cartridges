@@ -12,7 +12,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from dataclasses import dataclass
 
 from cartridges.datasets import DataSource, TrainDataset
-from cartridges.transmutation.adapter import ThoughtAdapter
+from cartridges.datasets import DataSource, TrainDataset
+from cartridges.transmutation.adapter import ThoughtAdapter, MultiLayerThoughtAdapter
 from cartridges.transmutation.extractor import TokenPatchExtractor
 from cartridges.transmutation.pipeline import Transmuter, TransmutationArtifacts
 from cartridges.transmutation.solver import ThoughtPatchSolver
@@ -31,7 +32,12 @@ class CartridgeTransmutationConfig:
     output_path: str = "transmuted_adapter.pt"
     data_limit: Optional[int] = None
     max_batches: Optional[int] = None
+    lambda_scale: Optional[float] = None
+    output_path: str = "transmuted_adapter.pt"
+    data_limit: Optional[int] = None
+    max_batches: Optional[int] = None
     progress: bool = True
+    layers: Optional[List[int]] = None  # None means all layers if specified as such
 
 
 def parse_args() -> CartridgeTransmutationConfig:
@@ -52,8 +58,24 @@ def parse_args() -> CartridgeTransmutationConfig:
     parser.add_argument("--max-batches", type=int, default=None, help="Optional cap on batches for quick debug.")
     parser.add_argument("--seed", type=int, default=0, help="Seed used by TrainDataset.")
     parser.add_argument("--no-progress", dest="progress", action="store_false", help="Disable progress bars.")
+    parser.add_argument(
+        "--layers", 
+        nargs="+", 
+        default=["-1"], 
+        help="Layers to extract from. Use 'all' for all layers, or list indices (e.g. -1 or 0 1 2)."
+    )
     parser.set_defaults(progress=True)
     args = parser.parse_args()
+    
+    # Parse layers
+    if "all" in args.layers:
+        layers = None
+    else:
+        try:
+            layers = [int(l) for l in args.layers]
+        except ValueError:
+            raise ValueError(f"Invalid layers argument: {args.layers}")
+
     return CartridgeTransmutationConfig(
         data_paths=args.data_paths,
         model_name=args.model_name,
@@ -66,6 +88,7 @@ def parse_args() -> CartridgeTransmutationConfig:
         max_batches=args.max_batches,
         seed=args.seed,
         progress=args.progress,
+        layers=layers,
     )
 
 
@@ -93,8 +116,9 @@ def save_artifacts(artifacts: TransmutationArtifacts, cfg: CartridgeTransmutatio
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "bias_delta": artifacts.bias_delta,
-            "weight_delta": artifacts.weight_delta,
+            # Save dicts for multi-layer
+            "bias_deltas": artifacts.bias_deltas,
+            "weight_deltas": artifacts.weight_deltas,
             "metadata": artifacts.metadata,
             "model_name": cfg.model_name,
             "tokenizer_name": cfg.tokenizer_name or cfg.model_name,
@@ -116,7 +140,8 @@ def main(cfg: CartridgeTransmutationConfig) -> None:
     logger.info(f"Dataset prepared with {len(dataset.elements)} elements and {len(dataset)} batches")
 
     logger.info("Starting token patch extraction")
-    extractor = TokenPatchExtractor(model=model, tokenizer=tokenizer, device=cfg.device)
+    # Pass cfg.layers
+    extractor = TokenPatchExtractor(model=model, tokenizer=tokenizer, layers=cfg.layers, device=cfg.device)
     solver = ThoughtPatchSolver(lambda_scale=cfg.lambda_scale)
     transmuter = Transmuter(extractor=extractor, solver=solver)
 
@@ -126,18 +151,25 @@ def main(cfg: CartridgeTransmutationConfig) -> None:
         extra_metadata={"data_paths": cfg.data_paths},
         show_progress=cfg.progress,
     )
+    
+    # artifacts now has dictionaries of deltas
+    num_layers = len(artifacts.bias_deltas)
     logger.info(
-        f"Extracted adapter: bias_dim={artifacts.bias_delta.shape}, "
-        f"weight_shape={artifacts.weight_delta.shape}, lambda={cfg.lambda_scale}"
+        f"Extracted adapter for {num_layers} layers. Lambda={cfg.lambda_scale}"
     )
     save_artifacts(artifacts, cfg)
 
     # Optional: show how to build an adapter object for reuse.
-    adapter = ThoughtAdapter(
-        bias_delta=artifacts.bias_delta,
-        weight_delta=artifacts.weight_delta,
-    )
-    logger.info("[transmute-cartridges] adapter ready for application via register_thought_hook.")
+    # Reconstruct adapter from dictionaries
+    adapters = {}
+    for idx in artifacts.bias_deltas:
+        adapters[idx] = ThoughtAdapter(
+            bias_delta=artifacts.bias_deltas[idx],
+            weight_delta=artifacts.weight_deltas[idx]
+        )
+    adapter = MultiLayerThoughtAdapter(adapters)
+    
+    logger.info("[transmute-cartridges] adapter ready for application via MultiLayerThoughtAdapter.apply()")
 
 
 if __name__ == "__main__":
