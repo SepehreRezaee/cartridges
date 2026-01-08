@@ -58,17 +58,15 @@ class Transmuter:
         extra_metadata: Optional[dict] = None,
         show_progress: bool = False,
     ) -> TransmutationArtifacts:
-        patches = list(
-            self.extractor.extract(
-                dataset,
-                context_strip_fn=context_strip_fn,
-                max_batches=max_batches,
-                show_progress=show_progress,
-            )
+        patches_iter = self.extractor.extract(
+            dataset,
+            context_strip_fn=context_strip_fn,
+            max_batches=max_batches,
+            show_progress=show_progress,
         )
         
         # solver.solve now returns dict[int, ThoughtPatch]
-        thought_patches: dict[int, ThoughtPatch] = self.solver.solve(patches, show_progress=show_progress)
+        thought_patches: dict[int, ThoughtPatch] = self.solver.solve(patches_iter, show_progress=show_progress)
         
         bias_deltas = {}
         weight_deltas = {}
@@ -80,7 +78,7 @@ class Transmuter:
         metadata = extra_metadata or {}
         metadata.update(
             {
-                "num_patches": len(patches),
+                # "num_patches": len(patches),  # Cannot know length of iterator easily without consuming
                 "lambda_scale": self.solver.lambda_scale,
                 "layers": list(thought_patches.keys()),
             }

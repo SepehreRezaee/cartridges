@@ -91,7 +91,7 @@ class TokenPatchExtractor:
         context_strip_fn: Optional[Callable[[DatasetElement], torch.Tensor]] = None,
         max_batches: Optional[int] = None,
         show_progress: bool = False,
-    ) -> List[TokenPatch]:
+    ) -> Iterable[TokenPatch]:
         """Compute TokenPatch objects over the dataset.
 
         Args:
@@ -101,31 +101,31 @@ class TokenPatchExtractor:
             max_batches: optional limit for quick debugging.
             show_progress: whether to display a progress bar over dataset elements.
         """
-        patches: List[TokenPatch] = []
         batches = dataset.batches[:max_batches] if max_batches else dataset.batches
 
+        # Estimate total elements if possible for progress bar
+        total_elems = sum(len(batch) for batch in batches) if show_progress else None
+        
         progress = None
         if show_progress:
-            total_elems = sum(len(batch) for batch in batches)
             progress = tqdm(total=total_elems, desc="Extracting token patches", unit="element")
 
         try:
             for batch in batches:
                 for elem_idx in batch:
                     element = dataset._get_element(elem_idx)
-                    patches.extend(
-                        self._extract_from_element(
-                            element,
-                            element_idx=elem_idx,
-                            context_strip_fn=context_strip_fn,
-                        )
-                    )
+                    for patch in self._extract_from_element(
+                        element,
+                        element_idx=elem_idx,
+                        context_strip_fn=context_strip_fn,
+                    ):
+                        yield patch
+                        
                     if progress:
                         progress.update(1)
         finally:
             if progress:
                 progress.close()
-        return patches
 
     def _default_strip(self, element: DatasetElement) -> torch.Tensor:
         """Fallback 'no-context' input: keep the assistant reply only.

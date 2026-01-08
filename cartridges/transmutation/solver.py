@@ -48,11 +48,13 @@ class ThoughtPatchSolver:
             a_t = patch.baseline
             
             if l_idx not in layer_deltas:
-                layer_deltas[l_idx] = []
+                # Store running sum for bias instead of list
+                layer_deltas[l_idx] = torch.zeros_like(delta)
                 layer_outer_sums[l_idx] = None
                 layer_counts[l_idx] = 0
 
-            layer_deltas[l_idx].append(delta)
+            # Update running bias sum
+            layer_deltas[l_idx] += delta
 
             denom = torch.dot(a_t, a_t) + 1e-8
             rank_one = torch.outer(delta, a_t) / denom
@@ -75,7 +77,8 @@ class ThoughtPatchSolver:
 
         results = {}
         for l_idx, count in layer_counts.items():
-            delta_bias = torch.stack(layer_deltas[l_idx], dim=0).mean(dim=0)
+            # Compute mean bias from running sum
+            delta_bias = layer_deltas[l_idx] / count
             
             scale = self.lambda_scale if self.lambda_scale is not None else 1.0 / count
             weight_delta = layer_outer_sums[l_idx] * scale
