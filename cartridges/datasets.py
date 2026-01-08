@@ -323,7 +323,8 @@ class TrainDataset(Dataset):
             data.extend(_prepare_data_source(source))
 
         elements = []
-        for row in data:
+        from tqdm.auto import tqdm
+        for row in tqdm(data, desc="Preparing dataset elements"):
             elements.append(MODEL_TO_MESSAGE_CONVERTER[self.tokenizer.name_or_path.lower()](
                 row.messages,
                 retokenize=self.config.targets == "tokens",
