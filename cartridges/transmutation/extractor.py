@@ -121,7 +121,7 @@ class TokenPatchExtractor:
                     ):
                         yield patch
                         
-                    if progress:
+                    if progress is not None:
                         progress.update(1)
         finally:
             if progress:

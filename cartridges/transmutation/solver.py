@@ -66,7 +66,7 @@ class ThoughtPatchSolver:
                 
             layer_counts[l_idx] += 1
             
-            if progress:
+            if progress is not None:
                 progress.update(1)
 
         if progress:
