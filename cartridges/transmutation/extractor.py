@@ -124,7 +124,7 @@ class TokenPatchExtractor:
                     if progress is not None:
                         progress.update(1)
         finally:
-            if progress:
+            if progress is not None:
                 progress.close()
 
     def _default_strip(self, element: DatasetElement) -> torch.Tensor:

@@ -69,7 +69,7 @@ class ThoughtPatchSolver:
             if progress is not None:
                 progress.update(1)
 
-        if progress:
+        if progress is not None:
             progress.close()
 
         if not layer_counts:
