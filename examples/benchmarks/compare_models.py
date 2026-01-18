@@ -24,8 +24,7 @@ from cartridges.utils.hf import read_conversations_from_hf
 # Benchmark Datasets
 from cartridges.data.longhealth.evals import LongHealthMultipleChoiceGenerateDataset
 from cartridges.data.mtob.evals import MTOBKalamangToEnglishGenerateDataset
-‍~
-
+‍
 class ModelRunner:
     def __init__(self, model_name: str, adapter_paths: Optional[List[str]] = None, device: str = "cuda"):
         print(f"Loading model: {model_name}")
