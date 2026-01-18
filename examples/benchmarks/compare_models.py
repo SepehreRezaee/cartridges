@@ -177,7 +177,7 @@ def run_longhealth(runner: ModelRunner, context: str = "", limit: int = 16):
 def run_mtob(runner: ModelRunner, context: str = "", limit: int = 16):
     print("\n--- Running MTOB Benchmark ---")
     dataset = MTOBKalamangToEnglishGenerateDataset(
-        MTOBKalamangToEnglishGenerateDataset.Config(max_samples=limit),
+        MTOBKalamangToEnglishGenerateDataset.Config(),
         tokenizer=runner.tokenizer,
         seed=42
     )
@@ -185,7 +185,13 @@ def run_mtob(runner: ModelRunner, context: str = "", limit: int = 16):
     correct = 0
     total = 0
     
-    prompts = [elem.prompt for elem in dataset]
+    # Manually limit here since Config doesn't support it
+    all_prompts = [elem.prompt for elem in dataset]
+    if limit:
+        prompts = all_prompts[:limit]
+    else:
+        prompts = all_prompts
+
     # Short generation for translation
     responses = runner.generate(prompts, max_new_tokens=64, context=context)
     
