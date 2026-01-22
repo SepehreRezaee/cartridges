@@ -21,7 +21,6 @@ from tqdm import tqdm
 
 from cartridges.transmutation.adapter import MultiLayerThoughtAdapter
 from cartridges.utils.hf import read_conversations_from_hf
-# Benchmark Datasets
 from cartridges.data.longhealth.evals import LongHealthMultipleChoiceGenerateDataset
 from cartridges.data.mtob.evals import MTOBKalamangToEnglishGenerateDataset
 
@@ -170,8 +169,8 @@ def run_longhealth(runner: ModelRunner, context: str = "", limit: int = 16):
         total += 1
         
     acc = correct / total if total > 0 else 0
-    print(f"LongHealth Accuracy: {acc:.2%}")
-    return acc
+    print(f"LongHealth Accuracy: {acc:.2%} ({correct}/{total})")
+    return acc, correct, total
 
 
 def run_mtob(runner: ModelRunner, context: str = "", limit: int = 16):
@@ -185,7 +184,7 @@ def run_mtob(runner: ModelRunner, context: str = "", limit: int = 16):
     correct = 0
     total = 0
     
-    # Manually limit here since Config doesn't support it
+    # Manually limit here
     all_prompts = [elem.prompt for elem in dataset]
     if limit:
         prompts = all_prompts[:limit]
@@ -203,8 +202,8 @@ def run_mtob(runner: ModelRunner, context: str = "", limit: int = 16):
         total += 1
         
     acc = correct / total if total > 0 else 0
-    print(f"MTOB Accuracy: {acc:.2%}")
-    return acc
+    print(f"MTOB Accuracy: {acc:.2%} ({correct}/{total})")
+    return acc, correct, total
 
 
 def main():
@@ -226,8 +225,18 @@ def main():
     # --- Condition 1: Base Model ---
     print("\n\n=== Condition 1: Base Model ===")
     runner = ModelRunner(args.model_name, device=args.device)
-    results["Base_LongHealth"] = run_longhealth(runner, limit=args.limit)
-    results["Base_MTOB"] = run_mtob(runner, limit=args.limit)
+    lh_acc, lh_correct, lh_total = run_longhealth(runner, limit=args.limit)
+    mtob_acc, mtob_correct, mtob_total = run_mtob(runner, limit=args.limit)
+    
+    # Calculate aggregate accuracy
+    base_aggregate_correct = lh_correct + mtob_correct
+    base_aggregate_total = lh_total + mtob_total
+    base_aggregate_acc = base_aggregate_correct / base_aggregate_total if base_aggregate_total > 0 else 0
+    
+    results["Base_LongHealth"] = lh_acc
+    results["Base_MTOB"] = mtob_acc
+    results["Base_Overall"] = base_aggregate_acc
+    print(f"Base Overall Accuracy: {base_aggregate_acc:.2%} ({base_aggregate_correct}/{base_aggregate_total})")
     
     # --- Condition 2: Base Model + Cartridges (ICL) ---
     print("\n\n=== Condition 2: Base Model + Concatenated Cartridges (ICL) ===")
@@ -237,8 +246,18 @@ def main():
         print("Warning: Context is very large, truncating to last 50000 chars for safety.")
         cartridge_context = cartridge_context[-50000:]
         
-    results["Cartridge_LongHealth"] = run_longhealth(runner, context=cartridge_context, limit=args.limit)
-    results["Cartridge_MTOB"] = run_mtob(runner, context=cartridge_context, limit=args.limit)
+    lh_acc, lh_correct, lh_total = run_longhealth(runner, context=cartridge_context, limit=args.limit)
+    mtob_acc, mtob_correct, mtob_total = run_mtob(runner, context=cartridge_context, limit=args.limit)
+    
+    # Calculate aggregate accuracy
+    cart_aggregate_correct = lh_correct + mtob_correct
+    cart_aggregate_total = lh_total + mtob_total
+    cart_aggregate_acc = cart_aggregate_correct / cart_aggregate_total if cart_aggregate_total > 0 else 0
+    
+    results["Cartridge_LongHealth"] = lh_acc
+    results["Cartridge_MTOB"] = mtob_acc
+    results["Cartridge_Overall"] = cart_aggregate_acc
+    print(f"Cartridge Overall Accuracy: {cart_aggregate_acc:.2%} ({cart_aggregate_correct}/{cart_aggregate_total})")
     
     # Clean up runner
     del runner
@@ -247,8 +266,18 @@ def main():
     # --- Condition 3: Transmuted Model ---
     print(f"\n\n=== Condition 3: Transmuted Model (Weights from {len(args.adapter_paths)} files) ===")
     runner = ModelRunner(args.model_name, adapter_paths=args.adapter_paths, device=args.device)
-    results["Transmuted_LongHealth"] = run_longhealth(runner, limit=args.limit)
-    results["Transmuted_MTOB"] = run_mtob(runner, limit=args.limit)
+    lh_acc, lh_correct, lh_total = run_longhealth(runner, limit=args.limit)
+    mtob_acc, mtob_correct, mtob_total = run_mtob(runner, limit=args.limit)
+    
+    # Calculate aggregate accuracy
+    trans_aggregate_correct = lh_correct + mtob_correct
+    trans_aggregate_total = lh_total + mtob_total
+    trans_aggregate_acc = trans_aggregate_correct / trans_aggregate_total if trans_aggregate_total > 0 else 0
+    
+    results["Transmuted_LongHealth"] = lh_acc
+    results["Transmuted_MTOB"] = mtob_acc
+    results["Transmuted_Overall"] = trans_aggregate_acc
+    print(f"Transmuted Overall Accuracy: {trans_aggregate_acc:.2%} ({trans_aggregate_correct}/{trans_aggregate_total})")
 
     # --- Summary ---
     print("\n\n=== Final Results ===")
